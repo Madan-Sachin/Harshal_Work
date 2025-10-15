@@ -1,14 +1,24 @@
 import streamlit as st
+import csv
+import os
 
-st.title("Simple Text Input App")
+st.title("Small Project Input Collector")
 
-# Take text input from user
-user_input = st.text_input("Enter something:")
+user_input = st.text_input("Enter your message:")
 
-# When user clicks submit button
 if st.button("Submit"):
-    st.write(f"You entered: {user_input}")
-    
-    # You can use 'user_input' variable in backend logic here
-    # Example:
-    # process_input(user_input)
+    if user_input.strip() != "":
+        file_exists = os.path.isfile("user_inputs.csv")
+        with open("user_inputs.csv", "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["Message"])  # header
+            writer.writerow([user_input])
+        st.success("✅ Message saved!")
+    else:
+        st.warning("Please enter a message.")
+
+# Show all messages while the app is running
+if os.path.exists("user_inputs.csv"):
+    with open("user_inputs.csv", "r") as f:
+        st.write(f.read())
