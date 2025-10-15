@@ -1,4 +1,5 @@
 streamlit
+gspread
+google-auth
 pandas
-numpy
-requests
+
