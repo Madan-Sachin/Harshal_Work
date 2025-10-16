@@ -2,4 +2,6 @@ streamlit
 gspread
 google-auth
 pandas
-
+transformers
+torch
+plotly
