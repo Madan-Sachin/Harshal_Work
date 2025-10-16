@@ -34,7 +34,8 @@ except Exception as e:
 def load_model():
     return pipeline(
         "text-classification",
-        model="bhadresh-savani/distilbert-base-uncased-emotion"
+        model="bhadresh-savani/distilbert-base-uncased-emotion",
+        return_all_scores=True  # important for consistent output
     )
 
 emotion_model = load_model()
@@ -42,23 +43,32 @@ emotion_model = load_model()
 # ------------------------
 # Map model outputs to 4 custom emotions
 # ------------------------
-def map_to_custom_emotion(label, text=""):
-    label = label.lower()
+def map_to_custom_emotion(model_outputs, text=""):
+    """
+    model_outputs: list of dicts [{'label': 'joy', 'score': 0.9}, ...]
+    text: original user input for optional heuristic
+    """
+    # Optional heuristic for love
     text_lower = text.lower()
-    # Optional heuristic: if text contains "love", classify as love
-    if "love" in text_lower or "darling" in text_lower or "sweetheart" in text_lower:
-        return "love"
+    if any(word in text_lower for word in ["love", "darling", "sweetheart"]):
+        return "love", 1.0
 
+    # Find top label by score
+    top_result = max(model_outputs, key=lambda x: x["score"])
+    label = top_result["label"].lower()
+    score = top_result["score"]
+
+    # Map to 4 emotions
     if label in ["joy", "happiness"]:
-        return "happy"
+        return "happy", score
     elif label == "love":
-        return "love"
-    elif label == ["sadness", "sad"]:
-        return "sad"
+        return "love", score
+    elif label in ["sadness", "sad"]:
+        return "sad", score
     elif label == "anger":
-        return "anger"
+        return "anger", score
     else:
-        return "neutral"
+        return "neutral", score
 
 # ------------------------
 # Emotion color mapping
@@ -82,13 +92,8 @@ if st.button("Submit"):
     if user_input.strip():
         try:
             # Predict emotion
-            results = emotion_model(user_input)[0]
-            top_result = max(results, key=lambda x: x["score"])
-            raw_emotion = top_result["label"]
-            score = round(top_result["score"], 3)
-
-            # Map to custom emotions
-            final_emotion = map_to_custom_emotion(raw_emotion, user_input)
+            model_outputs = emotion_model(user_input)[0]  # returns a list of dicts
+            final_emotion, score = map_to_custom_emotion(model_outputs, user_input)
             color = get_emotion_color(final_emotion)
 
             # Display styled emotion box
