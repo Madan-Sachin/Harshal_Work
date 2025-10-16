@@ -9,9 +9,8 @@ import plotly.express as px
 # Streamlit setup
 # ------------------------
 st.set_page_config(page_title="Emotion Detector", page_icon="💭", layout="centered")
-
 st.title("💭 Emotion Detector App")
-st.caption("Detect emotions — *Happy*, *Love*, *Sad*, or *Anger* — from your text 💫")
+st.caption("Detect emotions — Happy, Love, Sad, or Anger — from your text 💫")
 
 # ------------------------
 # Google Sheets setup
@@ -29,28 +28,34 @@ except Exception as e:
     st.stop()
 
 # ------------------------
-# Load Hugging Face emotion model
+# Load Hugging Face model
 # ------------------------
 @st.cache_resource
 def load_model():
-    return pipeline("text-classification",
-                    model="j-hartmann/emotion-english-distilroberta-base",
-                    return_all_scores=True)
+    return pipeline(
+        "text-classification",
+        model="bhadresh-savani/distilbert-base-uncased-emotion"
+    )
 
 emotion_model = load_model()
 
 # ------------------------
-# Emotion mapping function (7 → 4)
+# Map model outputs to 4 custom emotions
 # ------------------------
-def map_to_custom_emotion(label):
+def map_to_custom_emotion(label, text=""):
     label = label.lower()
-    if label in ["joy", "surprise"]:
-        return "happy"
-    elif label in ["love"]:
+    text_lower = text.lower()
+    # Optional heuristic: if text contains "love", classify as love
+    if "love" in text_lower or "darling" in text_lower or "sweetheart" in text_lower:
         return "love"
-    elif label in ["sadness", "fear"]:
+
+    if label in ["joy", "happiness"]:
+        return "happy"
+    elif label == "love":
+        return "love"
+    elif label == ["sadness", "sad"]:
         return "sad"
-    elif label in ["anger", "disgust"]:
+    elif label == "anger":
         return "anger"
     else:
         return "neutral"
@@ -82,11 +87,11 @@ if st.button("Submit"):
             raw_emotion = top_result["label"]
             score = round(top_result["score"], 3)
 
-            # Map to your 4 custom classes
-            final_emotion = map_to_custom_emotion(raw_emotion)
+            # Map to custom emotions
+            final_emotion = map_to_custom_emotion(raw_emotion, user_input)
             color = get_emotion_color(final_emotion)
 
-            # 🎨 Styled Emotion Box
+            # Display styled emotion box
             st.markdown("---")
             st.markdown(
                 f"""
