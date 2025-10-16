@@ -2,17 +2,14 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-import torch
-import json
-import plotly.express as px
+from transformers import pipeline
 
 # ------------------------
 # Streamlit Setup
 # ------------------------
 st.set_page_config(page_title="Emotion Detector", page_icon="💭", layout="centered")
-st.title("💭 Emotion Detector (Cloud-ready)")
-st.caption("Detect emotions — Happy, Love, Sad, or Anger — from your text 💫")
+st.title("💭 Emotion Detector")
+st.caption("Detect emotions — Happy, Love, Sad, or Anger — from your text")
 
 # ------------------------
 # Google Sheets Setup
@@ -30,40 +27,34 @@ except Exception as e:
     st.stop()
 
 # ------------------------
-# Load LLM
+# Load emotion classifier (small, cloud-friendly)
 # ------------------------
 @st.cache_resource
-def load_llm():
-    model_name = "tiiuae/falcon-7b-instruct"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map="auto",
-        torch_dtype=torch.float16
-    )
-    generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-    return generator
+def load_emotion_model():
+    return pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base")
 
-generator = load_llm()
+classifier = load_emotion_model()
 
 # ------------------------
-# Emotion detection
+# Map Hugging Face labels to your 4 emotions
 # ------------------------
-def get_emotion(text):
-    prompt = f"""
-You are an assistant that detects emotions. Only use one of these emotions: happy, love, sad, anger.
-Analyze the text and return the result as a JSON object with the key 'emotion'.
+label_mapping = {
+    "joy": "happy",
+    "love": "love",
+    "sadness": "sad",
+    "anger": "anger",
+    "fear": "sad",   # Map fear to sad for simplicity
+    "surprise": "happy"  # Map surprise to happy
+}
 
-Text: "{text}"
-JSON output:
-"""
+def predict_emotion(text):
     try:
-        output = generator(prompt, max_new_tokens=50, do_sample=False)[0]["generated_text"]
-        json_part = output.split("JSON output:")[-1].strip()
-        emotion_dict = json.loads(json_part)
-        return emotion_dict.get("emotion", "neutral").lower()
+        result = classifier(text)
+        hf_label = result[0]["label"].lower()
+        emotion = label_mapping.get(hf_label, "neutral")
+        return emotion
     except Exception as e:
-        print("JSON parse error:", e)
+        print("Prediction error:", e)
         return "neutral"
 
 # ------------------------
@@ -86,7 +77,7 @@ user_input = st.text_input("💬 Enter your message:")
 if st.button("Submit"):
     if user_input.strip():
         try:
-            emotion = get_emotion(user_input)
+            emotion = predict_emotion(user_input)
             color = get_color(emotion)
 
             # Display emotion box
@@ -114,22 +105,6 @@ try:
     if records:
         df = pd.DataFrame(records)
         st.dataframe(df)
-
-        # Pie chart
-        if "emotion" in df.columns:
-            counts = df["emotion"].value_counts().reset_index()
-            counts.columns = ["emotion", "count"]
-            fig = px.pie(counts, values="count", names="emotion",
-                         color="emotion",
-                         color_discrete_map={
-                             "happy": "#FFD93D",
-                             "love": "#FFB6C1",
-                             "sad": "#89CFF0",
-                             "anger": "#FF4B4B",
-                             "neutral": "#A9A9A9"
-                         },
-                         title="Emotion Distribution", hole=0.4)
-            st.plotly_chart(fig, use_container_width=True)
     else:
         st.write("No messages yet.")
 except Exception as e:
