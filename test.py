@@ -2,14 +2,15 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-from transformers import pipeline
-import plotly.express as px
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+import torch
+import json
 
 # ------------------------
 # Streamlit setup
 # ------------------------
 st.set_page_config(page_title="Emotion Detector", page_icon="💭", layout="centered")
-st.title("💭 Emotion Detector App")
+st.title("💭 Emotion Detector (LLM Version)")
 st.caption("Detect emotions — Happy, Love, Sad, or Anger — from your text 💫")
 
 # ------------------------
@@ -28,58 +29,54 @@ except Exception as e:
     st.stop()
 
 # ------------------------
-# Load Hugging Face model
+# Load Hugging Face LLM
 # ------------------------
 @st.cache_resource
 def load_model():
-    return pipeline(
-        "text-classification",
-        model="bhadresh-savani/distilbert-base-uncased-emotion",
-        return_all_scores=True  # important for consistent output
+    model_name = "tiiuae/falcon-7b-instruct"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        device_map="auto",
+        torch_dtype=torch.float16
     )
+    generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    return generator
 
-emotion_model = load_model()
+generator = load_model()
 
 # ------------------------
-# Map model outputs to 4 custom emotions
+# Map output to 4 emotions
 # ------------------------
-def map_to_custom_emotion(model_outputs, text=""):
-    """
-    model_outputs: list of dicts [{'label': 'joy', 'score': 0.9}, ...]
-    text: original user input for optional heuristic
-    """
-    # Optional heuristic for love
-    text_lower = text.lower()
-    if any(word in text_lower for word in ["love", "darling", "sweetheart"]):
-        return "love", 1.0
+def get_emotion(text):
+    prompt = f"""
+You are an assistant that detects emotions. Only use one of these emotions: happy, love, sad, anger.
+Analyze the text and return the result as a JSON object with the key 'emotion'.
 
-    # Find top label by score
-    top_result = max(model_outputs, key=lambda x: x["score"])
-    label = top_result["label"].lower()
-    score = top_result["score"]
-
-    # Map to 4 emotions
-    if label in ["joy", "happiness"]:
-        return "happy", score
-    elif label == "love":
-        return "love", score
-    elif label in ["sadness", "sad"]:
-        return "sad", score
-    elif label == "anger":
-        return "anger", score
-    else:
-        return "neutral", score
+Text: \"{text}\"
+JSON output:
+"""
+    try:
+        output = generator(prompt, max_new_tokens=50, do_sample=False)[0]["generated_text"]
+        # Extract JSON part
+        json_part = output.split("JSON output:")[-1].strip()
+        emotion_dict = json.loads(json_part)
+        emotion = emotion_dict.get("emotion", "neutral").lower()
+        return emotion
+    except Exception as e:
+        print("Error parsing JSON:", e)
+        return "neutral"
 
 # ------------------------
 # Emotion color mapping
 # ------------------------
 def get_emotion_color(emotion):
     colors = {
-        "happy": "#FFD93D",     # yellow
-        "love": "#FFB6C1",      # pink
-        "sad": "#89CFF0",       # blue
-        "anger": "#FF4B4B",     # red
-        "neutral": "#A9A9A9"    # grey
+        "happy": "#FFD93D",
+        "love": "#FFB6C1",
+        "sad": "#89CFF0",
+        "anger": "#FF4B4B",
+        "neutral": "#A9A9A9"
     }
     return colors.get(emotion, "#A9A9A9")
 
@@ -91,18 +88,16 @@ user_input = st.text_input("💬 Enter your message:")
 if st.button("Submit"):
     if user_input.strip():
         try:
-            # Predict emotion
-            model_outputs = emotion_model(user_input)[0]  # returns a list of dicts
-            final_emotion, score = map_to_custom_emotion(model_outputs, user_input)
-            color = get_emotion_color(final_emotion)
+            # Detect emotion
+            emotion = get_emotion(user_input)
+            color = get_emotion_color(emotion)
 
-            # Display styled emotion box
+            # Display emotion box
             st.markdown("---")
             st.markdown(
                 f"""
                 <div style='background-color:{color};padding:20px;border-radius:15px;text-align:center;'>
-                    <h2 style='color:black;'>Emotion: {final_emotion.capitalize()}</h2>
-                    <p style='font-size:18px;'>Confidence: {score*100:.1f}%</p>
+                    <h2 style='color:black;'>Emotion: {emotion.capitalize()}</h2>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -110,7 +105,7 @@ if st.button("Submit"):
             st.markdown("---")
 
             # Save to Google Sheets
-            sheet.append_row([user_input, final_emotion, score])
+            sheet.append_row([user_input, emotion])
             st.success("✅ Saved to Google Sheets!")
 
         except Exception as e:
@@ -119,7 +114,7 @@ if st.button("Submit"):
         st.warning("Please enter a message before submitting.")
 
 # ------------------------
-# Display all stored data
+# Show all messages
 # ------------------------
 st.subheader("📋 All Messages with Detected Emotion")
 
@@ -133,6 +128,7 @@ try:
         if "emotion" in df.columns:
             emotion_counts = df["emotion"].value_counts().reset_index()
             emotion_counts.columns = ["emotion", "count"]
+            import plotly.express as px
             fig = px.pie(
                 emotion_counts, values="count", names="emotion",
                 title="Emotion Distribution", hole=0.4,
