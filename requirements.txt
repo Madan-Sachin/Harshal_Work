@@ -4,4 +4,3 @@ google-auth
 pandas
 transformers
 torch
-plotly
