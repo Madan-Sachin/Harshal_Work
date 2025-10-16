@@ -10,8 +10,8 @@ import plotly.express as px
 # ------------------------
 st.set_page_config(page_title="Emotion Detector", page_icon="💭", layout="centered")
 
-st.title("💭 Emotion Detection App")
-st.caption("Detect the emotion behind your message — *Anger*, *Happy*, or *Romantic* 💫")
+st.title("💭 Emotion Detector App")
+st.caption("Detect emotions — *Happy*, *Love*, *Sad*, or *Anger* — from your text 💫")
 
 # ------------------------
 # Google Sheets setup
@@ -23,13 +23,13 @@ try:
     creds_dict = dict(st.secrets["gcp"])
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
-    sheet = client.open("UserInput").sheet1  # replace with your sheet name
+    sheet = client.open("UserInput").sheet1  # Replace with your sheet name
 except Exception as e:
     st.error(f"❌ Error connecting to Google Sheets: {e}")
     st.stop()
 
 # ------------------------
-# Load Hugging Face model
+# Load Hugging Face emotion model
 # ------------------------
 @st.cache_resource
 def load_model():
@@ -40,16 +40,18 @@ def load_model():
 emotion_model = load_model()
 
 # ------------------------
-# Custom emotion mapper
+# Emotion mapping function (7 → 4)
 # ------------------------
 def map_to_custom_emotion(label):
     label = label.lower()
-    if label in ["anger", "disgust"]:
-        return "anger"
-    elif label in ["joy"]:
+    if label in ["joy", "surprise"]:
         return "happy"
     elif label in ["love"]:
-        return "romantic"
+        return "love"
+    elif label in ["sadness", "fear"]:
+        return "sad"
+    elif label in ["anger", "disgust"]:
+        return "anger"
     else:
         return "neutral"
 
@@ -58,10 +60,11 @@ def map_to_custom_emotion(label):
 # ------------------------
 def get_emotion_color(emotion):
     colors = {
-        "anger": "#FF4B4B",      # red
-        "happy": "#FFD93D",      # yellow
-        "romantic": "#FFB6C1",   # pink
-        "neutral": "#A9A9A9"     # grey
+        "happy": "#FFD93D",     # yellow
+        "love": "#FFB6C1",      # pink
+        "sad": "#89CFF0",       # blue
+        "anger": "#FF4B4B",     # red
+        "neutral": "#A9A9A9"    # grey
     }
     return colors.get(emotion, "#A9A9A9")
 
@@ -79,7 +82,7 @@ if st.button("Submit"):
             raw_emotion = top_result["label"]
             score = round(top_result["score"], 3)
 
-            # Map to your custom emotions
+            # Map to your 4 custom classes
             final_emotion = map_to_custom_emotion(raw_emotion)
             color = get_emotion_color(final_emotion)
 
@@ -120,9 +123,11 @@ try:
         if "emotion" in df.columns:
             emotion_counts = df["emotion"].value_counts().reset_index()
             emotion_counts.columns = ["emotion", "count"]
-            fig = px.pie(emotion_counts, values="count", names="emotion",
-                         title="Emotion Distribution", hole=0.4,
-                         color_discrete_sequence=["#FF4B4B", "#FFD93D", "#FFB6C1", "#A9A9A9"])
+            fig = px.pie(
+                emotion_counts, values="count", names="emotion",
+                title="Emotion Distribution", hole=0.4,
+                color_discrete_sequence=["#FFD93D", "#FFB6C1", "#89CFF0", "#FF4B4B", "#A9A9A9"]
+            )
             st.plotly_chart(fig, use_container_width=True)
     else:
         st.write("No messages yet.")
